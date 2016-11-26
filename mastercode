@@ -1,0 +1,254 @@
+
+# coding: utf-8
+
+# In[29]:
+
+import numpy as np
+import pandas as pd
+import xlrd
+import datetime
+import xlsxwriter
+import time
+import pytz
+import os
+import sys
+
+
+# func to get diff in days
+def days_between(d1, d2):
+    return abs((d2 - d1).days)
+
+Aged_tickets_list = []
+Aged_index = []
+days_diff = 0
+Aged_tickets_count = 0
+smarts_alerts_Aged = 0
+total_waiting_user_cases = 0
+total_smarts_cases = 0
+total_awaiting_3rd = 0
+sev2_cases = 0
+sev3_cases = 0
+Aged_tickets_Count_5_10 = 0
+Aged_tickets_Count_10_15 = 0
+Aged_tickets_Count_15 = 0
+closed_mis = 0
+ongoing_mis = 0
+sev2_au_cases = 0
+sev2_a3rd_cases = 0
+sev2_assigned_cases = 0
+
+# time format on handoff template
+format = "%a %b %d %H:%M %Y %Z"
+my_date = datetime.datetime.now(pytz.timezone('US/Pacific'))
+time_pst= my_date.strftime(format)
+
+# code to load excel file
+#table = pd.read_excel('C:\\Users\\v-ajmudi\\Desktop\\Python_GNS3\\incident.xlsx',sheetname='Page 1',header=0)
+
+user_input = input("Enter path of your incident excel file :")
+assert os.path.exists(user_input), "I did not find the file at, "+str(user_input)
+print("Hooray we found your file!")
+#table = pd.read_excel(user_input,header=0)
+#print (table)
+ext = os.path.splitext(user_input)[-1].lower()
+if ext == '.xlsx' or ext == '.xls' :
+    table = pd.read_excel(user_input,header=0)
+else :
+    print (" Provide valid Excel File")
+    sys.exit()
+    
+# formatting current_time to format str and then to datetime format
+current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+datetime_current_time = datetime.datetime.strptime(current_time,"%Y-%m-%d %H:%M:%S")
+
+# iterating over table file
+for y in range(len(table)):
+    if (table['State'][y] == 'Awaiting User'):
+        total_waiting_user_cases = total_waiting_user_cases + 1
+    if (table['Caller'][y] == 'SMARTS '): 
+        total_smarts_cases = total_smarts_cases + 1
+    if (table['State'][y] == 'Awaiting 3rd Party'):
+        total_awaiting_3rd = total_awaiting_3rd + 1
+    if (table['Severity'][y] == '2 - High'):
+        sev2_cases = sev2_cases + 1
+        if (table['State'][y] == 'Awaiting User' ):
+            sev2_au_cases = sev2_au_cases + 1
+        if (table['State'][y] == 'Awaiting 3rd Party'):
+            sev2_a3rd_cases = sev2_a3rd_cases + 1
+        if (table['State'][y] == 'Assigned'):
+            sev2_assigned_cases = sev2_assigned_cases + 1
+            
+    if (table['Severity'][y] == '3 - Medium'):
+        sev3_cases = sev3_cases + 1
+    if (table['Severity'][y] == '1 - Managed') or (table['Severity'][y] == '0 - Major'):
+        ongoing_mis = ongoing_mis + 1
+        
+# iteration over index,rows. count = days diff   
+for index,rows in table.iterrows():
+    days_diff = days_between(datetime_current_time,table['Opened'][index])
+    if days_diff > 5:
+        Aged_tickets_count = Aged_tickets_count + 1
+        Aged_tickets_list.append(table['Number'][index])
+        Aged_index.append(index)
+    if days_diff >5 and days_diff <= 10:
+        Aged_tickets_Count_5_10 = Aged_tickets_Count_5_10 + 1
+    if days_diff >10 and days_diff <= 15:
+        Aged_tickets_Count_10_15 = Aged_tickets_Count_10_15 + 1
+    if days_diff > 15:
+        Aged_tickets_Count_15 = Aged_tickets_Count_15 + 1
+
+# printing INC/Caller/current INC state
+for x in Aged_index:
+   ## print ((table['Number'][x])+("   ")+(table['Caller'][x])+ ("      ")+(table['State'][x]))
+    if table['Caller'][x] == 'SMARTS ':
+       ## print ("Smarts Aged tickets:", table['Number'][x])
+        smarts_alerts_Aged = smarts_alerts_Aged + 1
+    
+##for x in Aged_index:
+   ## if (table['State'][x] == 'Awaiting User') and (table['Caller'][x] == 'SMARTS '):
+      ## print("SMARTS Aged tickets in Awaiting User state:",table['Number'][x])
+
+print ("Total Tickets:",len(table))
+print ("Cases with Awaiting user state:",total_waiting_user_cases)
+print ("Cases with Awaiting 3rd Party state:",total_awaiting_3rd)
+print ("No of SMARTS cases:",total_smarts_cases)
+print ("Total Sev2 cases:",sev2_cases)
+print("Total Sev3 cases: ", sev3_cases)
+#print (table[['Caller','Number']])
+print ("Tickets more than 5 days: ", Aged_tickets_count)
+print ("Smarts aged cases:", smarts_alerts_Aged)
+print("Aged case > 15:",Aged_tickets_Count_15)
+print (sev2_au_cases)
+print (sev2_a3rd_cases)
+sev2_cases_info = (("Ongoing Sev2 Tickets:- Awaiting user - {}, 3rd Party Pending - {}, In Progress - {}").format(sev2_au_cases,sev2_a3rd_cases,sev2_assigned_cases))
+print (sev2_cases_info)
+
+
+# In[30]:
+
+# create workbook and add sheet
+incident_excel_file = xlsxwriter.Workbook("incidents_excel.xlsx")
+incident_sheet = incident_excel_file.add_worksheet(name="incidents")
+incident_sheet2 = incident_excel_file.add_worksheet(name="Handoff Template")
+incident_excel_file.set_size(100,100)
+incident_sheet.set_column(0,4,25)
+incident_sheet2.set_column(0,15,15)
+incident_sheet3 = incident_excel_file.add_worksheet()
+incident_sheet3.set_column(0,1)
+
+row = 0
+col = 0
+# Data for excel sheet
+data_excel = (
+    ['Total tickets',(len(table))],
+    ["Awaiting user cases",total_waiting_user_cases],
+    ["Alerts",total_smarts_cases],
+    ["Awaiting 3rd Party cases",total_awaiting_3rd],
+    ['Sev 2 cases',sev2_cases],
+    ['Sev3 cases',sev3_cases],
+    ["Aged tickets >5", Aged_tickets_count],
+    ["Aged tickets > 15",Aged_tickets_Count_15],
+    ["Aged tickets 5-10",Aged_tickets_Count_5_10],
+    ["Aged ticket 10-15",Aged_tickets_Count_10_15])
+
+# Add a bold format for cells
+bold = incident_excel_file.add_format()
+bold.set_color('blue')
+bold.set_size
+bold.set_bold()
+
+#incident_sheet.insert_textbox('F2', text, options)
+
+for x,y in data_excel:
+    incident_sheet.write(row,col,x,bold)
+    incident_sheet.write(row,col+1,y)
+    row += 1
+
+
+# In[31]:
+
+format_table = incident_excel_file.add_format()
+format_table.set_border(2)
+incident_sheet2.add_table('A1:L17',{'header_row': False})
+prepared_by = input("Prepared by ?")
+handoff_to = input("Handoff to ?")
+closed_mis = input("No of closed MIs ?")
+new_tickets = input("No of New Tickets during shift ?")
+closed_tickets = input("No of closed tickets during shift ?")
+smart_cases = "Total smart cases:" + str(total_smarts_cases)
+prepared_by_whom = "Prepared by: "+ prepared_by
+handoff_to_whom = "Handoff to: "+handoff_to
+handoff_time = "Date & Time: " + time_pst
+format_basic = incident_excel_file.add_format({'align':'center'})
+format_1 = incident_excel_file.add_format({'align':'center','border':0,'bg_color':'#7FFF00','font_size':20})
+format_2 = incident_excel_file.add_format({'align':'center','border':0,'bg_color':'white','font_size':15})
+format_3 = incident_excel_file.add_format({'align':'center','border':0,'bg_color':'#7B68EE','font_size':15})
+format_4 = incident_excel_file.add_format({'align':'center','border':0,'bg_color':'#FFFF99','num_format':'@'})
+
+incident_sheet2.hide_gridlines(2)
+
+incident_sheet2.set_default_row(25)
+incident_sheet2.write("B2",prepared_by_whom)
+#incident_sheet2.write("E2",handoff_time)
+incident_sheet2.write ("K2",handoff_to_whom)
+incident_sheet2.set_row(11,None,format_4)
+incident_sheet2.set_row(12,None,format_4)
+incident_sheet2.set_row(13,None,format_4)
+incident_sheet2.set_row(14,None,format_4)
+incident_sheet2.merge_range('E2:G2',handoff_time,format_basic)
+incident_sheet2.merge_range('A1:L1','Service Operations - Network Infrastructure Shift Handover Report',format_1)
+incident_sheet2.merge_range('A3:L3',"Significant Incident/Events During Shift",format_3)
+incident_sheet2.merge_range('A6:L6',"Summary of MI and Impacting Sev2 (Ongoing & Closed)",format_3)
+incident_sheet2.merge_range('B4:C4',"Closed MIs",format_basic)
+incident_sheet2.merge_range('B5:C5',"Ongoing/Open MIs",format_basic)
+incident_sheet2.merge_range('I4:J4',"Ongoing/Open Sev2",format_basic)
+incident_sheet2.merge_range('I5:J5',"Ongoing/Open Sev3",format_basic)
+incident_sheet2.merge_range('A7:L7',sev2_cases_info,format_basic)
+incident_sheet2.merge_range('A8:L8',"MI/Scheduled Tickets info",format_basic)
+incident_sheet2.merge_range('A9:L9','',format_basic)
+incident_sheet2.merge_range('A10:L10','',format_basic)
+incident_sheet2.merge_range('A11:L11',"Handover Ticket Details",format_3)
+incident_sheet2.merge_range('B12:C12',"Overall Queue Size",format_4)
+incident_sheet2.merge_range('B13:C13','New tickets during shift',format_4)
+incident_sheet2.merge_range('B14:C14','Closed tickets during shift',format_4)
+incident_sheet2.merge_range('G12:H12',"Awaiting user/3rd Party pending",format_4)
+incident_sheet2.write('H13','Tickets 06-10 Days',format_4)
+incident_sheet2.write('H14','Tickets 11-15 Days',format_4)
+incident_sheet2.write('H15','Tickets 16+ Days',format_4)
+incident_sheet2.write('K4',sev2_cases,format_basic)
+incident_sheet2.write('K5',sev3_cases,format_basic)
+incident_sheet2.write('D4',int(closed_mis),format_basic)
+incident_sheet2.write('D5',ongoing_mis,format_basic)
+incident_sheet2.write('D12',(len(table)))
+incident_sheet2.write('I13',Aged_tickets_Count_5_10)
+incident_sheet2.write('I14',Aged_tickets_Count_10_15)
+incident_sheet2.write('I15',Aged_tickets_Count_15)
+incident_sheet2.write('D13',int(new_tickets))
+incident_sheet2.write('D14',int(closed_tickets))
+incident_sheet2.write('I12',"{}/{}".format(total_waiting_user_cases,total_awaiting_3rd))
+
+
+incident_excel_file.close()
+
+
+# user_input = input("Enter path of your incident excel file :")
+# assert os.path.exists(user_input), "I did not find the file at, "+str(user_input)
+# print("Hooray we found your file!")
+# #table = pd.read_excel(user_input,header=0)
+# #print (table)
+# ext = os.path.splitext(user_input)[-1].lower()
+# if ext == '.xlsx' or ext == '.xls' :
+#     table = pd.read_excel(user_input,header=0)
+# else :
+#     print (" Provide valid Excel File")
+#     sys.exit()
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
